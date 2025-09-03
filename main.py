@@ -8,9 +8,9 @@ from base64 import b64encode
 
 ### ▼▼▼ 修正が必要 ① ▼▼▼ ###
 # あなたのWordPressサイトの情報を入力
-WORDPRESS_URL = "https://あなたのドメイン.com"
-WORDPRESS_USER = "あなたのWPユーザー名"
-WORDPRESS_PASSWORD = os.environ.get("WP_PASSWORD") # GitHub Secretsから読み込む
+WORDPRESS_URL = "http://www.fukuoka-online.jp"
+WORDPRESS_USER = "dgtrends_fukuoka"
+WORDPRESS_PASSWORD = os.environ.get("i9eP wI1B pgs2 LrBS u9Mu leKY") # GitHub Secretsから読み込む
 
 ### ▼▼▼ 修正が必要 ② ▼▼▼ ###
 # 各APIキーを環境変数から読み込む
