@@ -32,6 +32,7 @@ jobs:
         WP_PASSWORD: ${{ secrets.WP_PASSWORD }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+        GDRIVE_API_CREDENTIALS: ${{ secrets.GDRIVE_API_CREDENTIALS }}
 
     - name: Commit posted_trends.txt
       run: |
