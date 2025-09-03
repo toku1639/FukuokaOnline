@@ -31,12 +31,13 @@ jobs:
         # GitHubのSecretsに設定した値を環境変数としてスクリプトに渡す
         WP_PASSWORD: ${{ secrets.WP_PASSWORD }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
 
-    - name: Commit posted_urls.txt
+    - name: Commit posted_trends.txt
       run: |
         git config --global user.name 'github-actions[bot]'
         git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-        git add posted_urls.txt
+        git add posted_trends.txt
         # ファイルに変更があった場合のみコミット
-        git diff --quiet --exit-code || git commit -m "Update posted URLs"
+        git diff --quiet --exit-code || git commit -m "Update posted trends"
         git push
