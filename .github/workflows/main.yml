@@ -1,9 +1,9 @@
 name: Blog Post Automation
 
 on:
-  schedule:
+  # schedule:
     # 日本時間で毎日午前8時0分に実行 (UTCでは23時)
-    - cron: '0 23 * * *'
+    # - cron: '0 23 * * *'
   # 手動でも実行できるようにする
   workflow_dispatch:
 
