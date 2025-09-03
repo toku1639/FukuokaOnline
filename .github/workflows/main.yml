@@ -1,0 +1,42 @@
+name: Blog Post Automation
+
+on:
+  schedule:
+    # 日本時間で毎日午前8時0分に実行 (UTCでは23時)
+    - cron: '0 23 * * *'
+  # 手動でも実行できるようにする
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run script
+      run: python main.py
+      env:
+        # GitHubのSecretsに設定した値を環境変数としてスクリプトに渡す
+        WP_PASSWORD: ${{ secrets.WP_PASSWORD }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+    - name: Commit posted_urls.txt
+      run: |
+        git config --global user.name 'github-actions[bot]'
+        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+        git add posted_urls.txt
+        # ファイルに変更があった場合のみコミット
+        git diff --quiet --exit-code || git commit -m "Update posted URLs"
+        git push
