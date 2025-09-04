@@ -17,11 +17,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GDRIVE_API_CREDENTIALS_JSON = os.environ.get("GDRIVE_API_CREDENTIALS")
 
 SPREADSHEET_ID = "1wncPu2zohdvEgbTTEUBJAOPLKYTxZ14-nShy3y7ZYHE"
-
-# 情報を取得したいGoogle NewsのRSSフィードURL
 RSS_FEED_URL = "https://news.google.com/rss/search?q=福岡&hl=ja&gl=JP&ceid=JP:ja"
-
-# 一度に処理する記事の最大数
 MAX_ARTICLES_TO_PROCESS = 5
 
 # --- プログラム本体 ---
@@ -121,8 +117,11 @@ def update_spreadsheet(creds, wp_url, doc_url):
         worksheet = spreadsheet.sheet1
         col_b_values = worksheet.col_values(2)
         next_row = len(col_b_values) + 1
-        worksheet.update_cell(next_row, 2, wp_url)
-        worksheet.update_cell(next_row, 3, doc_url)
+        # 空文字を書き込まないようにハンドリング
+        if wp_url:
+            worksheet.update_cell(next_row, 2, wp_url)
+        if doc_url:
+            worksheet.update_cell(next_row, 3, doc_url)
         print(f"✅ スプレッドシートのB{next_row}, C{next_row}セルにURLを書き込みました。")
         return True
     except Exception as e:
@@ -153,11 +152,16 @@ def main():
         article_title, article_content = create_article_with_gemini(entry.title, entry.summary)
 
         if article_title and article_content:
+            # 各処理を試み、結果を保存
             wp_url = post_to_wordpress(article_title, article_content)
-            if wp_url:
-                doc_url = create_google_doc(gdrive_creds, article_title, article_content)
-                if doc_url:
-                    update_spreadsheet(gdrive_creds, wp_url, doc_url)
+            doc_url = create_google_doc(gdrive_creds, article_title, article_content)
+
+            # どちらかのURLが取得できたらスプレッドシートを更新
+            if wp_url or doc_url:
+                update_spreadsheet(gdrive_creds, wp_url or "", doc_url or "")
+            
+            # Googleドキュメントが作成できていれば、処理済みとする
+            if doc_url:
                 add_posted_url(entry.link)
         
         processed_count += 1
