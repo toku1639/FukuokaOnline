@@ -48,7 +48,7 @@ def add_posted_url(url):
 
 def create_article_with_gemini(title, summary):
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-pro')
+    model = genai.GenerativeModel('gemini-1.5-flash')
     prompt = f"""
     以下のニュースを基に、SEOを意識した魅力的なブログ記事を作成してください。
 
