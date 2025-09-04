@@ -47,13 +47,44 @@ def add_posted_url(url):
 def create_article_with_gemini(title, summary):
     genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel('gemini-1.5-flash')
-    prompt = f"""...""" # (プロンプト部分は変更なし)
+    
+    prompt = f"""
+    以下のニュース情報を元に、福岡の読者向けのブログ記事を1つ作成してください。
+
+    # ニュース情報
+    - タイトル: {title}
+    - 概要: {summary}
+
+    # 作成ルール
+    - 必ず下記のXMLタグの形式で出力してください。
+    - <title>タグには、SEOを意識した、読者がクリックしたくなるような新しいタイトルを入れてください。
+    - <content>タグには、H2見出しを3つ使った、ポジティブで分かりやすい記事本文と、最後のまとめを入れてください。
+
+    # 出力形式
+    <article>
+    <title>ここに新しいタイトル</title>
+    <content>
+    ここに記事本文
+    </content>
+    </article>
+    """
+
     try:
         print(f"🤖 Geminiに「{title}」の記事作成を依頼します...")
         response = model.generate_content(prompt)
-        title_part = response.text.split('[タイトル]')[1].split('[本文]')[0].strip()
-        content_part = response.text.split('[本文]')[1].strip()
-        return title_part, content_part
+        raw_text = response.text
+
+        # AIの応答が指示通りの形式かチェック
+        if '<title>' in raw_text and '</title>' in raw_text and '<content>' in raw_text and '</content>' in raw_text:
+            title_part = raw_text.split('<title>')[1].split('</title>')[0].strip()
+            content_part = raw_text.split('<content>')[1].split('</content>')[0].strip()
+            return title_part, content_part
+        else:
+            # 形式が違う場合はエラーとしてログを残し、処理をスキップ
+            print("❌ Gemini APIエラー: AIの応答が予期したXML形式ではありませんでした。")
+            print(f"   AIの応答(先頭500文字): {raw_text[:500]}...")
+            return None, None
+
     except Exception as e:
         print(f"❌ Gemini APIエラー: {e}")
         return None, None
