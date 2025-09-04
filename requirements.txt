@@ -4,3 +4,4 @@ requests
 python-dotenv
 tweepy
 gspread
+google-api-python-client
