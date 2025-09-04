@@ -109,30 +109,26 @@ def post_to_wordpress(title, content):
         return None
 
 def create_google_doc(creds, title, content):
+    """Google Drive APIを使い、指定フォルダにドキュメントを直接作成する"""
     try:
         print("📄 Googleドキュメントの作成を開始します...")
-        # Docs APIでドキュメントを作成
+        # Drive APIで、指定フォルダ内にドキュメントを作成
+        drive_service = build('drive', 'v3', credentials=creds)
+        file_metadata = {
+            'name': title,
+            'parents': [GDRIVE_FOLDER_ID],
+            'mimeType': 'application/vnd.google-apps.document'
+        }
+        file = drive_service.files().create(body=file_metadata).execute()
+        doc_id = file.get('id')
+
+        # Docs APIで、作成したドキュメントに内容を書き込み
         docs_service = build('docs', 'v1', credentials=creds)
-        doc = docs_service.documents().create(body={'title': title}).execute()
-        doc_id = doc.get('documentId')
-        
-        # Docs APIで内容を書き込み
         requests_body = [{'insertText': {'location': {'index': 1}, 'text': content}}]
         docs_service.documents().batchUpdate(documentId=doc_id, body={'requests': requests_body}).execute()
 
-        # Drive APIで指定フォルダに移動
-        drive_service = build('drive', 'v3', credentials=creds)
-        file = drive_service.files().get(fileId=doc_id, fields='parents').execute()
-        previous_parents = ",".join(file.get('parents'))
-        drive_service.files().update(
-            fileId=doc_id,
-            addParents=GDRIVE_FOLDER_ID,
-            removeParents=previous_parents,
-            fields='id, parents'
-        ).execute()
-
         doc_url = f"https://docs.google.com/document/d/{doc_id}/edit"
-        print(f"✅ Googleドキュメントを作成し、指定フォルダに移動しました: {doc_url}")
+        print(f"✅ Googleドキュメントを作成し、指定フォルダに保存しました: {doc_url}")
         return doc_url
     except Exception as e:
         print(f"❌ Googleドキュメント作成エラー: {e}")
