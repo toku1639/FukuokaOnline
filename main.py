@@ -101,31 +101,52 @@ def post_to_wordpress(title, content):
             print(f"レスポンス内容: {response.text}")
         return None
 
-def create_google_doc(creds, title, content):
+def create_google_doc(creds, title, content, template_doc_id):
     try:
-        print("📄 Googleドキュメントの作成を開始します...")
-        drive_service = build('drive', 'v3', credentials=creds)
-        file_metadata = {
-            'name': title,
-            'parents': [GDRIVE_FOLDER_ID],
-            'mimeType': 'application/vnd.google-apps.document'
-        }
-        file = drive_service.files().create(body=file_metadata).execute()
-        doc_id = file.get('id')
+        print("📄 既存のGoogleドキュメントを更新します...")
         docs_service = build('docs', 'v1', credentials=creds)
-        requests_body = [{'insertText': {'location': {'index': 1}, 'text': content}}]
-        docs_service.documents().batchUpdate(documentId=doc_id, body={'requests': requests_body}).execute()
-        doc_url = f"https://docs.google.com/document/d/{doc_id}/edit"
-        print(f"✅ Googleドキュメントを作成し、指定フォルダに保存しました: {doc_url}")
+        drive_service = build('drive', 'v3', credentials=creds)
+
+        # 1. ドキュメントの名前を変更
+        drive_service.files().update(fileId=template_doc_id, body={'name': title}).execute()
+
+        # 2. ドキュメントの内容をクリア
+        doc = docs_service.documents().get(documentId=template_doc_id).execute()
+        end_index = doc.get('body').get('content')[-1].get('endIndex')
+        if end_index > 1:
+            requests_delete = [
+                {
+                    'deleteContentRange': {
+                        'range': {
+                            'startIndex': 1,
+                            'endIndex': end_index - 1,
+                        }
+                    }
+                }
+            ]
+            docs_service.documents().batchUpdate(documentId=template_doc_id, body={'requests': requests_delete}).execute()
+
+        # 3. 新しい内容を挿入
+        requests_insert = [
+            {
+                'insertText': {
+                    'location': { 'index': 1 },
+                    'text': content
+                }
+            }
+        ]
+        docs_service.documents().batchUpdate(documentId=template_doc_id, body={'requests': requests_insert}).execute()
+
+        doc_url = f"https://docs.google.com/document/d/{template_doc_id}/edit"
+        print(f"✅ Googleドキュメントを更新しました: {doc_url}")
         return doc_url
     except Exception as e:
-        print(f"❌ Googleドキュメント作成エラー: {e}")
+        print(f"❌ Googleドキュメント更新エラー: {e}")
         return None
 
-def update_spreadsheet(creds, wp_url, doc_url):
+def update_spreadsheet(gc, wp_url, doc_url):
     try:
         print("📝 スプレッドシートの更新を開始します...")
-        gc = gspread.authorize(creds)
         spreadsheet = gc.open_by_key(SPREADSHEET_ID)
         worksheet = spreadsheet.sheet1
         col_b_values = worksheet.col_values(2)
@@ -143,30 +164,53 @@ def main():
     if not all([WORDPRESS_URL, WORDPRESS_USER, WORDPRESS_PASSWORD, GEMINI_API_KEY, GDRIVE_API_CREDENTIALS_JSON]):
         print("❌ エラー: 必要な設定が不足しています。")
         return
+    
     gdrive_creds = get_gdrive_credentials()
+    
+    try:
+        print("📝 スプレッドシートからテンプレートURLを読み込みます...")
+        gc = gspread.authorize(gdrive_creds)
+        spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+        worksheet = spreadsheet.sheet1
+        template_url = worksheet.acell('A1').value
+        if not template_url:
+            print("❌ エラー: スプレッドシートのA1セルにテンプレートURLがありません。")
+            return
+        template_doc_id = template_url.split('/d/')[1].split('/')[0]
+        print(f"   テンプレートID: {template_doc_id}")
+    except Exception as e:
+        print(f"❌ スプレッドシートからのテンプレートURL読み込みエラー: {e}")
+        return
+
     feed = feedparser.parse(RSS_FEED_URL)
     posted_urls = get_posted_urls()
     processed_count = 0
     if not feed.entries:
         print("📰 新しいニュースはありませんでした。")
+
     for entry in reversed(feed.entries):
         if processed_count >= MAX_ARTICLES_TO_PROCESS: 
             print(f"🔍 処理上限（{MAX_ARTICLES_TO_PROCESS}件）に達したため、終了します。")
             break
         if entry.link in posted_urls: continue
+        
         print(f"\n🔥 新しいニュースを発見: {entry.title}")
         article_title, article_content = create_article_with_gemini(entry.title, entry.summary)
+        
         if article_title and article_content:
             wp_url = post_to_wordpress(article_title, article_content)
-            doc_url = create_google_doc(gdrive_creds, article_title, article_content)
+            doc_url = create_google_doc(gdrive_creds, article_title, article_content, template_doc_id)
+            
             if wp_url or doc_url:
-                update_spreadsheet(gdrive_creds, wp_url or "", doc_url or "")
+                update_spreadsheet(gc, wp_url or "", doc_url or "")
             if doc_url:
                 add_posted_url(entry.link)
         processed_count += 1
+        
     if processed_count == 0 and feed.entries:
         print("✨ 新しく処理するニュースはありませんでした。（すべて処理済み）")
     print("🏁 スクリプトを終了します。")
+
 
 if __name__ == "__main__":
     main()
