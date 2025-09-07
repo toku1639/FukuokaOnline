@@ -16,7 +16,7 @@ WORDPRESS_PASSWORD = os.environ.get("WP_PASSWORD")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GDRIVE_API_CREDENTIALS_JSON = os.environ.get("GDRIVE_API_CREDENTIALS")
 
-SPREADSHEET_ID = "1wncPu2zohdvEgbTTEUBJAOPLKYTxZ14-nShy3y7ZYHE"
+SPREADSHEET_ID = "1bMmbM4wdsPnJkCja3nQEdDZQE3QoMHiOV7h14mMXNOI"
 GDRIVE_FOLDER_ID = "13pn0SHHydeIxjgewummgD4ulMiyWKsuv" # Googleドキュメントを保存するフォルダのID
 
 RSS_FEED_URL = "https://news.google.com/rss/search?q=福岡&hl=ja&gl=JP&ceid=JP:ja"
