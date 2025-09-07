@@ -103,30 +103,19 @@ def post_to_wordpress(title, content):
 
 def create_google_doc(creds, title, content, template_doc_id):
     try:
-        print("📄 既存のGoogleドキュメントを更新します...")
-        docs_service = build('docs', 'v1', credentials=creds)
+        print(f"📄 テンプレート「{template_doc_id}」をコピーしてドキュメントを作成します...")
         drive_service = build('drive', 'v3', credentials=creds)
+        docs_service = build('docs', 'v1', credentials=creds)
 
-        # 1. ドキュメントの名前を変更
-        drive_service.files().update(fileId=template_doc_id, body={'name': title}).execute()
+        # 1. テンプレートをコピーし、新しいタイトルを付ける
+        copied_file_body = {'name': title}
+        copied_file = drive_service.files().copy(
+            fileId=template_doc_id,
+            body=copied_file_body
+        ).execute()
+        doc_id = copied_file.get('id')
 
-        # 2. ドキュメントの内容をクリア
-        doc = docs_service.documents().get(documentId=template_doc_id).execute()
-        end_index = doc.get('body').get('content')[-1].get('endIndex')
-        if end_index > 1:
-            requests_delete = [
-                {
-                    'deleteContentRange': {
-                        'range': {
-                            'startIndex': 1,
-                            'endIndex': end_index - 1,
-                        }
-                    }
-                }
-            ]
-            docs_service.documents().batchUpdate(documentId=template_doc_id, body={'requests': requests_delete}).execute()
-
-        # 3. 新しい内容を挿入
+        # 2. コピーしたファイルに内容を書き込む
         requests_insert = [
             {
                 'insertText': {
@@ -135,13 +124,13 @@ def create_google_doc(creds, title, content, template_doc_id):
                 }
             }
         ]
-        docs_service.documents().batchUpdate(documentId=template_doc_id, body={'requests': requests_insert}).execute()
+        docs_service.documents().batchUpdate(documentId=doc_id, body={'requests': requests_insert}).execute()
 
-        doc_url = f"https://docs.google.com/document/d/{template_doc_id}/edit"
-        print(f"✅ Googleドキュメントを更新しました: {doc_url}")
+        doc_url = f"https://docs.google.com/document/d/{doc_id}/edit"
+        print(f"✅ Googleドキュメントを作成しました: {doc_url}")
         return doc_url
     except Exception as e:
-        print(f"❌ Googleドキュメント更新エラー: {e}")
+        print(f"❌ Googleドキュメント作成/コピーエラー: {e}")
         return None
 
 def update_spreadsheet(gc, wp_url, doc_url):
@@ -149,11 +138,12 @@ def update_spreadsheet(gc, wp_url, doc_url):
         print("📝 スプレッドシートの更新を開始します...")
         spreadsheet = gc.open_by_key(SPREADSHEET_ID)
         worksheet = spreadsheet.sheet1
-        col_b_values = worksheet.col_values(2)
-        next_row = len(col_b_values) + 1
-        if wp_url: worksheet.update_cell(next_row, 2, wp_url)
-        if doc_url: worksheet.update_cell(next_row, 3, doc_url)
-        print(f"✅ スプレッドシートのB{next_row}, C{next_row}セルにURLを書き込みました。")
+        # A列の最終行を基準に行を決定
+        col_a_values = worksheet.col_values(1)
+        next_row = len(col_a_values) + 1
+        if doc_url: worksheet.update_cell(next_row, 1, doc_url) # A列にDoc URL
+        if wp_url: worksheet.update_cell(next_row, 2, wp_url)  # B列にWP URL
+        print(f"✅ スプレッドシートのA{next_row}, B{next_row}セルにURLを書き込みました。")
         return True
     except Exception as e:
         print(f"❌ スプレッドシート更新エラー: {e}")
@@ -172,9 +162,9 @@ def main():
         gc = gspread.authorize(gdrive_creds)
         spreadsheet = gc.open_by_key(SPREADSHEET_ID)
         worksheet = spreadsheet.sheet1
-        template_url = worksheet.acell('A1').value
+        template_url = worksheet.acell('D1').value # D1セルから読み込み
         if not template_url:
-            print("❌ エラー: スプレッドシートのA1セルにテンプレートURLがありません。")
+            print("❌ エラー: スプレッドシートのD1セルにテンプレートURLがありません。")
             return
         template_doc_id = template_url.split('/d/')[1].split('/')[0]
         print(f"   テンプレートID: {template_doc_id}")
