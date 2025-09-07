@@ -101,21 +101,26 @@ def post_to_wordpress(title, content):
             print(f"レスポンス内容: {response.text}")
         return None
 
-def create_google_doc(creds, title, content, template_doc_id):
+def is_doc_empty(docs_service, doc_id):
     try:
-        print(f"📄 テンプレート「{template_doc_id}」をコピーしてドキュメントを作成します...")
-        drive_service = build('drive', 'v3', credentials=creds)
+        doc = docs_service.documents().get(documentId=doc_id, fields='body(content)').execute()
+        # endIndexが2以下（つまり、ほぼ空）であれば空とみなす
+        end_index = doc.get('body').get('content')[-1].get('endIndex')
+        return end_index <= 2
+    except Exception as e:
+        print(f"ドキュメントのチェック中にエラー: {e}")
+        return False
+
+def write_to_doc(creds, doc_id, title, content):
+    try:
+        print(f"📄 ドキュメント「{doc_id}」に書き込みます...")
         docs_service = build('docs', 'v1', credentials=creds)
+        drive_service = build('drive', 'v3', credentials=creds)
 
-        # 1. テンプレートをコピーし、新しいタイトルを付ける
-        copied_file_body = {'name': title}
-        copied_file = drive_service.files().copy(
-            fileId=template_doc_id,
-            body=copied_file_body
-        ).execute()
-        doc_id = copied_file.get('id')
+        # 1. ドキュメントの名前を変更
+        drive_service.files().update(fileId=doc_id, body={'name': title}).execute()
 
-        # 2. コピーしたファイルに内容を書き込む
+        # 2. 新しい内容を挿入
         requests_insert = [
             {
                 'insertText': {
@@ -125,25 +130,20 @@ def create_google_doc(creds, title, content, template_doc_id):
             }
         ]
         docs_service.documents().batchUpdate(documentId=doc_id, body={'requests': requests_insert}).execute()
-
-        doc_url = f"https://docs.google.com/document/d/{doc_id}/edit"
-        print(f"✅ Googleドキュメントを作成しました: {doc_url}")
-        return doc_url
+        print(f"✅ ドキュメントを更新しました。")
+        return True
     except Exception as e:
-        print(f"❌ Googleドキュメント作成/コピーエラー: {e}")
-        return None
+        print(f"❌ Googleドキュメント書き込みエラー: {e}")
+        return False
 
-def update_spreadsheet(gc, wp_url, doc_url):
+def update_spreadsheet_row(gc, row_index, wp_url, article_title):
     try:
-        print("📝 スプレッドシートの更新を開始します...")
+        print(f"📝 スプレッドシートの{row_index}行目を更新します...")
         spreadsheet = gc.open_by_key(SPREADSHEET_ID)
         worksheet = spreadsheet.sheet1
-        # A列の最終行を基準に行を決定
-        col_a_values = worksheet.col_values(1)
-        next_row = len(col_a_values) + 1
-        if doc_url: worksheet.update_cell(next_row, 1, doc_url) # A列にDoc URL
-        if wp_url: worksheet.update_cell(next_row, 2, wp_url)  # B列にWP URL
-        print(f"✅ スプレッドシートのA{next_row}, B{next_row}セルにURLを書き込みました。")
+        worksheet.update_cell(row_index, 2, wp_url)          # B列にWP URL
+        worksheet.update_cell(row_index, 3, article_title) # C列に記事タイトル
+        print(f"✅ スプレッドシートを更新しました。")
         return True
     except Exception as e:
         print(f"❌ スプレッドシート更新エラー: {e}")
@@ -156,49 +156,69 @@ def main():
         return
     
     gdrive_creds = get_gdrive_credentials()
-    
+    docs_service = build('docs', 'v1', credentials=gdrive_creds)
+    gc = gspread.authorize(gdrive_creds)
+
     try:
-        print("📝 スプレッドシートからテンプレートURLを読み込みます...")
-        gc = gspread.authorize(gdrive_creds)
+        print("📝 スプレッドシートから利用可能なドキュメントリストを読み込みます...")
         spreadsheet = gc.open_by_key(SPREADSHEET_ID)
         worksheet = spreadsheet.sheet1
-        template_url = worksheet.acell('D1').value # D1セルから読み込み
-        if not template_url:
-            print("❌ エラー: スプレッドシートのD1セルにテンプレートURLがありません。")
+        doc_urls = worksheet.col_values(1) # A列のURLをすべて取得
+        if not doc_urls:
+            print("❌ エラー: スプレッドシートのA列にドキュメントURLがありません。")
             return
-        template_doc_id = template_url.split('/d/')[1].split('/')[0]
-        print(f"   テンプレートID: {template_doc_id}")
     except Exception as e:
-        print(f"❌ スプレッドシートからのテンプレートURL読み込みエラー: {e}")
+        print(f"❌ スプレッドシート読み込みエラー: {e}")
         return
 
     feed = feedparser.parse(RSS_FEED_URL)
     posted_urls = get_posted_urls()
     processed_count = 0
+
     if not feed.entries:
         print("📰 新しいニュースはありませんでした。")
 
     for entry in reversed(feed.entries):
-        if processed_count >= MAX_ARTICLES_TO_PROCESS: 
+        if processed_count >= MAX_ARTICLES_TO_PROCESS:
             print(f"🔍 処理上限（{MAX_ARTICLES_TO_PROCESS}件）に達したため、終了します。")
             break
         if entry.link in posted_urls: continue
-        
+
         print(f"\n🔥 新しいニュースを発見: {entry.title}")
         article_title, article_content = create_article_with_gemini(entry.title, entry.summary)
-        
-        if article_title and article_content:
-            wp_url = post_to_wordpress(article_title, article_content)
-            doc_url = create_google_doc(gdrive_creds, article_title, article_content, template_doc_id)
+        if not (article_title and article_content):
+            continue
+
+        # 利用可能な空のドキュメントを探す
+        found_empty_doc = False
+        for i, url in enumerate(doc_urls):
+            if not url.startswith('https://docs.google.com'): continue
             
-            if wp_url or doc_url:
-                update_spreadsheet(gc, wp_url or "", doc_url or "")
-            if doc_url:
-                add_posted_url(entry.link)
-        processed_count += 1
+            row_index = i + 1
+            doc_id = url.split('/d/')[1].split('/')[0]
+
+            if is_doc_empty(docs_service, doc_id):
+                print(f"   -> 空のドキュメントを発見: {url} ({row_index}行目)")
+                # WordPressに投稿
+                wp_url = post_to_wordpress(article_title, article_content)
+                # ドキュメントに書き込み
+                write_success = write_to_doc(gdrive_creds, doc_id, article_title, article_content)
+
+                if write_success:
+                    # スプレッドシートを更新
+                    update_spreadsheet_row(gc, row_index, wp_url or "", article_title)
+                    add_posted_url(entry.link)
+                    processed_count += 1
+                    found_empty_doc = True
+                    break # 次のニュース記事へ
         
+        if not found_empty_doc:
+            print("⚠️ 利用可能な空のGoogleドキュメントがスプレッドシートに見つかりませんでした。")
+            # 空きがない場合は、これ以上ニュースを処理できないのでループを抜ける
+            break
+
     if processed_count == 0 and feed.entries:
-        print("✨ 新しく処理するニュースはありませんでした。（すべて処理済み）")
+        print("✨ 新しく処理するニュースはありませんでした。（すべて処理済みまたは空きドキュメントなし）")
     print("🏁 スクリプトを終了します。")
 
 
