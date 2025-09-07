@@ -17,7 +17,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GDRIVE_API_CREDENTIALS_JSON = os.environ.get("GDRIVE_API_CREDENTIALS")
 
 SPREADSHEET_ID = "1bMmbM4wdsPnJkCja3nQEdDZQE3QoMHiOV7h14mMXNOI"
-GDRIVE_FOLDER_ID = "13pn0SHHydeIxjgewummgD4ulMiyWKsuv" # Googleドキュメントを保存するフォルダのID
+GDRIVE_FOLDER_ID = "1I-V7pFkTR_-TRUGU7B-F7tvdxKfSMvj5" # Googleドキュメントを保存するフォルダのID
 
 RSS_FEED_URL = "https://news.google.com/rss/search?q=福岡&hl=ja&gl=JP&ceid=JP:ja"
 MAX_ARTICLES_TO_PROCESS = 5
